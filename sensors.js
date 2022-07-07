@@ -187,7 +187,7 @@ var Sensors = GObject.registerClass({
             }
         }).catch(err => { });
 
-        // grab CPU information including frequency
+        // grab CPU information
         new FileModule.File('/proc/cpuinfo').read("\n").then(lines => {
             let vendor_id = '';
             let sockets = {};
@@ -218,14 +218,26 @@ var Sensors = GObject.registerClass({
             }
 
             let max_hertz = Math.getMaxOfArray(freqs) * 1000 * 1000;
-            let sum = freqs.reduce((a, b) => a + b);
-            let hertz = (sum / freqs.length) * 1000 * 1000;
-            this._returnValue(callback, 'Frequency', hertz, 'processor', 'hertz');
             this._returnValue(callback, 'Boost', max_hertz, 'processor', 'hertz');
             this._returnValue(callback, 'Vendor', vendor_id, 'processor', 'string');
             this._returnValue(callback, 'Bogomips', bogomips, 'processor', 'string');
             this._returnValue(callback, 'Sockets', Object.keys(sockets).length, 'processor', 'string');
             this._returnValue(callback, 'Cache', cache, 'processor', 'memory');
+        }).catch(err => { });
+
+        // grab CPU frequency information
+        new FileModule.File('/sys/devices/system/cpu').list().then(subfolders => {
+            let freq_promises = [];
+            for (let subfolder of subfolders) {
+                if (subfolder.match(/^cpu\d+/)) {
+                    freq_promises.push(new FileModule.File('/sys/devices/system/cpu/' + subfolder + '/cpufreq/scaling_cur_freq').read());
+                }
+            }
+            Promise.all(freq_promises).then(freqs => {
+                let sum = freqs.map(Number).reduce((a, b) => a + b);
+                let hertz = (sum / freqs.length) * 1000; // value is already in kHz
+                this._returnValue(callback, 'Frequency', hertz, 'processor', 'hertz');
+            }).catch(err => { });
         }).catch(err => { });
     }
 
